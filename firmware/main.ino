@@ -1,205 +1,397 @@
-/**
- * KLNavBot — ESP32 Main Firmware
- * Connects to WiFi, Firebase Realtime Database,
- * reads ultrasonic obstacle sensor, controls motors,
- * and streams simulated GPS coordinates.
- *
- * Hardware:
- *   - ESP32 Dev Module
- *   - HC-SR04 Ultrasonic Sensor (TRIG=5, ECHO=18)
- *   - L298N Motor Driver (IN1=26, IN2=27, IN3=14, IN4=12)
- *   - ENA=25 (PWM), ENB=13 (PWM)
- *   - NEO-6M GPS module (RX=16, TX=17) — optional
- *
- * Libraries required (install via Arduino Library Manager):
- *   - Firebase ESP Client  : mobizt/Firebase ESP Client
- *   - ArduinoJson          : bblanchon/ArduinoJson
- *
- * Author : KLNavBot Team
- * Version: 1.0.0
- */
+"""
+KLNavBot — main.py (MicroPython for Thonny)
+ESP32 firmware using 3-file structure:
+  ├── gps_module.py      GPS parsing (NEO-6M, UART1)
+  ├── motor_control.py   Motor driving (L298N)
+  └── main.py            This file — WiFi, Firebase, main loop
 
-#include <Arduino.h>
-#include <WiFi.h>
-#include <FirebaseESP32.h>      // mobizt/Firebase ESP Client
-#include <ArduinoJson.h>
-#include "motor_control.h"
+YOUR Hardware:
+  WiFi          : Replace WIFI_SSID / WIFI_PASSWORD below
+  Firebase      : Replace FIREBASE_URL below
+  GPS (NEO-6M)  : UART1  TX=17  RX=16  @ 9600 baud
+  Ultrasonic    : TRIG=19  ECHO=18
+  Motor A (Left): IN1=25  IN2=26  ENA=27
+  Motor B (Right): IN3=32  IN4=33  ENB=14
+  Obstacle      : stops if distance < 20 cm
+  Firebase poll : every 500 ms
 
-// ── WiFi Credentials ────────────────────────────────────────
-#define WIFI_SSID     "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+Upload order in Thonny (File → Save copy → MicroPython device):
+  1. motor_control.py
+  2. gps_module.py
+  3. main.py
+  Then press EN (reset) on ESP32.
 
-// ── Firebase Credentials ─────────────────────────────────────
-#define FIREBASE_HOST "klu-robot-tracker-default-rtdb.firebaseio.com"
-#define FIREBASE_AUTH "YOUR_FIREBASE_DATABASE_SECRET"   // or use token
+Author : KLNavBot Team
+Version: 2.0.0
+"""
 
-// ── HC-SR04 Ultrasonic Pins ──────────────────────────────────
-#define TRIG_PIN 5
-#define ECHO_PIN 18
-#define OBSTACLE_THRESHOLD_CM 30   // halt if obstacle within 30 cm
+import gc
+import time
+import network
+import urequests
+import ujson
+from machine import Pin, time_pulse_us
 
-// ── Timing ───────────────────────────────────────────────────
-#define SENSOR_INTERVAL_MS   100   // obstacle poll interval
-#define FIREBASE_INTERVAL_MS 500   // Firebase push interval
-#define GPS_INTERVAL_MS      2000  // GPS push interval
+# ── Import your own modules ──────────────────────────────────
+from motor_control import MotorController
+from gps_module    import GPSModule
 
-// ── Global Objects ───────────────────────────────────────────
-FirebaseData  fbData;
-FirebaseAuth  fbAuth;
-FirebaseConfig fbConfig;
 
-// ── State ────────────────────────────────────────────────────
-String  lastCommand       = "stop";
-bool    obstacleDetected  = false;
-float   simLat            = 16.441589f;  // GPS simulation start
-float   simLon            = 80.624234f;
-unsigned long lastSensorMs   = 0;
-unsigned long lastFirebaseMs = 0;
-unsigned long lastGpsMs      = 0;
+# ═══════════════════════════════════════════════════════════
+# SECTION 1 — CONFIGURATION
+# ═══════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────────────────────
-void connectWiFi() {
-  Serial.print("[WiFi] Connecting to ");
-  Serial.println(WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+# ── WiFi credentials ─────────────────────────────────────────
+WIFI_SSID     = "YOUR_WIFI_SSID"      # 🔒 Replace with your WiFi name
+WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"  # 🔒 Replace with your WiFi password
 
-  uint8_t attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print('.');
-    attempts++;
-  }
+# ── Firebase Realtime Database ────────────────────────────────
+FIREBASE_URL  = "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com"  # 🔒 Replace
+FIREBASE_AUTH = ""   # 🔒 Optional: your database secret (leave "" for open rules)
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WiFi] Connected — IP: " + WiFi.localIP().toString());
-  } else {
-    Serial.println("\n[WiFi] FAILED — restarting in 5s");
-    delay(5000);
-    ESP.restart();
-  }
-}
+# ── Ultrasonic sensor pins ────────────────────────────────────
+TRIG_PIN = 19   # HC-SR04 trigger
+ECHO_PIN = 18   # HC-SR04 echo
 
-// ─────────────────────────────────────────────────────────────
-void connectFirebase() {
-  fbConfig.host        = FIREBASE_HOST;
-  fbConfig.signer.tokens.legacy_token = FIREBASE_AUTH;
+# ── Obstacle stop distance ────────────────────────────────────
+OBSTACLE_THRESHOLD_CM = 20   # halt motors if object closer than this
 
-  Firebase.begin(&fbConfig, &fbAuth);
-  Firebase.reconnectWiFi(true);
-  Firebase.setDoubleDecimalPlaces(6);
+# ── Motor default speed (0–1023) ─────────────────────────────
+MOTOR_SPEED = 700
 
-  Serial.println("[Firebase] Initialised");
-}
+# ── Timing intervals (milliseconds) ──────────────────────────
+FIREBASE_POLL_MS  = 500    # how often to check for new commands
+GPS_PUSH_MS       = 2000   # how often to push GPS to Firebase
+STATUS_PUSH_MS    = 1000   # how often to push heartbeat status
 
-// ─────────────────────────────────────────────────────────────
-/** Read ultrasonic distance in centimetres */
-float readUltrasonicCm() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
 
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);  // 30 ms timeout
-  if (duration == 0) return 999.0f;                 // no echo → clear
-  return (duration * 0.0343f) / 2.0f;
-}
+# ═══════════════════════════════════════════════════════════
+# SECTION 2 — WIFI
+# ═══════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────────────────────
-/** Read latest movement command from Firebase */
-void readCommandFromFirebase() {
-  if (Firebase.getString(fbData, "/robotCommands/move")) {
-    String cmd = fbData.stringData();
-    if (cmd != lastCommand) {
-      lastCommand = cmd;
-      Serial.println("[CMD] New command: " + cmd);
-    }
-  }
-}
+def connect_wifi() -> network.WLAN:
+    """
+    Connect to WiFi access point.
+    Retries up to 30 times, restarts ESP32 on failure.
+    """
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
 
-// ─────────────────────────────────────────────────────────────
-/** Push robot status and GPS to Firebase */
-void pushStatusToFirebase() {
-  // Build JSON payload for robotStatus
-  StaticJsonDocument<128> statusDoc;
-  statusDoc["obstacle"] = obstacleDetected;
-  statusDoc["state"]    = lastCommand;
-  statusDoc["battery"]  = 85;   // placeholder — wire ADC for real value
+    # Skip if already connected (e.g. after soft reset)
+    if wlan.isconnected():
+        print("[WiFi] Already connected:", wlan.ifconfig()[0])
+        return wlan
 
-  String statusJson;
-  serializeJson(statusDoc, statusJson);
-  Firebase.setString(fbData, "/robotStatus", statusJson);
-}
+    print(f"[WiFi] Connecting to '{WIFI_SSID}'", end="")
+    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
 
-void pushGPSToFirebase() {
-  // Simulate slight GPS drift for demo
-  simLat += ((random(-5, 5)) * 0.000001f);
-  simLon += ((random(-5, 5)) * 0.000001f);
+    attempts = 0
+    while not wlan.isconnected() and attempts < 30:
+        time.sleep(1)
+        print(".", end="")
+        attempts += 1
 
-  FirebaseJson json;
-  json.set("lat", simLat);
-  json.set("lon", simLon);
-  json.set("ts",  millis());
-  Firebase.setJSON(fbData, "/robotGPS", json);
-}
+    if wlan.isconnected():
+        print(f"\n[WiFi] ✅ Connected!")
+        print(f"       IP      : {wlan.ifconfig()[0]}")
+        print(f"       Gateway : {wlan.ifconfig()[2]}")
+    else:
+        print("\n[WiFi] ❌ Failed — restarting in 5s ...")
+        time.sleep(5)
+        import machine
+        machine.reset()
 
-// ─────────────────────────────────────────────────────────────
-void setup() {
-  Serial.begin(115200);
-  Serial.println("\n=== KLNavBot Firmware v1.0.0 ===");
+    return wlan
 
-  // Ultrasonic sensor pins
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
 
-  // Motor controller
-  motorSetup();
+# ═══════════════════════════════════════════════════════════
+# SECTION 3 — FIREBASE REST HELPERS
+# ═══════════════════════════════════════════════════════════
 
-  // Network + Firebase
-  connectWiFi();
-  connectFirebase();
+def _url(path: str) -> str:
+    """Build full Firebase REST endpoint URL."""
+    base = f"{FIREBASE_URL}{path}.json"
+    return base + f"?auth={FIREBASE_AUTH}" if FIREBASE_AUTH else base
 
-  // Initial stop command
-  motorStop();
-  Serial.println("[INIT] Ready");
-}
 
-// ─────────────────────────────────────────────────────────────
-void loop() {
-  unsigned long now = millis();
+def firebase_get(path: str):
+    """
+    Read a Firebase node (HTTP GET).
+    Returns parsed dict/value, or None on error.
+    """
+    try:
+        r = urequests.get(_url(path), timeout=5)
+        data = r.json()
+        r.close()
+        gc.collect()   # free RAM after HTTP response
+        return data
+    except Exception as e:
+        print(f"[Firebase GET] {path} — {e}")
+        return None
 
-  // ── 1. Obstacle detection ─────────────────────────────────
-  if (now - lastSensorMs >= SENSOR_INTERVAL_MS) {
-    lastSensorMs = now;
 
-    float dist = readUltrasonicCm();
-    obstacleDetected = (dist < OBSTACLE_THRESHOLD_CM);
+def firebase_put(path: str, data: dict) -> bool:
+    """
+    Overwrite a Firebase node (HTTP PUT).
+    Use for initial setup of full nodes.
+    """
+    try:
+        r = urequests.put(
+            _url(path),
+            data=ujson.dumps(data),
+            headers={"Content-Type": "application/json"},
+            timeout=5
+        )
+        r.close()
+        gc.collect()
+        return True
+    except Exception as e:
+        print(f"[Firebase PUT] {path} — {e}")
+        return False
 
-    if (obstacleDetected) {
-      motorStop();
-      Serial.printf("[SENSOR] Obstacle at %.1f cm — HALT\n", dist);
-    }
-  }
 
-  // ── 2. Execute motion command (only if path is clear) ─────
-  if (!obstacleDetected) {
-    if      (lastCommand == "forward")  motorForward(200);
-    else if (lastCommand == "backward") motorBackward(200);
-    else if (lastCommand == "left")     motorLeft(180);
-    else if (lastCommand == "right")    motorRight(180);
-    else                                motorStop();
-  }
+def firebase_patch(path: str, data: dict) -> bool:
+    """
+    Update specific fields in a Firebase node (HTTP PATCH).
+    Use for partial updates like status and GPS.
+    """
+    try:
+        r = urequests.patch(
+            _url(path),
+            data=ujson.dumps(data),
+            headers={"Content-Type": "application/json"},
+            timeout=5
+        )
+        r.close()
+        gc.collect()
+        return True
+    except Exception as e:
+        print(f"[Firebase PATCH] {path} — {e}")
+        return False
 
-  // ── 3. Firebase read/write ────────────────────────────────
-  if (now - lastFirebaseMs >= FIREBASE_INTERVAL_MS) {
-    lastFirebaseMs = now;
-    readCommandFromFirebase();
-    pushStatusToFirebase();
-  }
 
-  // ── 4. GPS push ───────────────────────────────────────────
-  if (now - lastGpsMs >= GPS_INTERVAL_MS) {
-    lastGpsMs = now;
-    pushGPSToFirebase();
-  }
-}
+# ═══════════════════════════════════════════════════════════
+# SECTION 4 — ULTRASONIC SENSOR
+# ═══════════════════════════════════════════════════════════
+
+def setup_ultrasonic():
+    """
+    Initialise HC-SR04 pins.
+    Returns (trig, echo) Pin objects.
+    """
+    trig = Pin(TRIG_PIN, Pin.OUT)
+    echo = Pin(ECHO_PIN, Pin.IN)
+    trig.off()
+    print(f"[SENSOR] HC-SR04 ready  —  TRIG={TRIG_PIN}  ECHO={ECHO_PIN}")
+    return trig, echo
+
+
+def get_distance_cm(trig: Pin, echo: Pin):
+    """
+    Measure distance using HC-SR04 ultrasonic sensor.
+
+    Steps:
+      1. Send a 10 µs HIGH pulse on TRIG
+      2. Measure duration of ECHO HIGH pulse
+      3. Distance (cm) = duration × speed_of_sound / 2
+
+    Returns float (cm), or None if no echo received (open path).
+    """
+    # Ensure trigger is LOW before pulse
+    trig.off()
+    time.sleep_us(2)
+
+    # Send 10 µs trigger pulse
+    trig.on()
+    time.sleep_us(10)
+    trig.off()
+
+    # Measure echo — timeout 30 000 µs ≈ 5 m max range
+    pulse = time_pulse_us(echo, 1, 30000)
+
+    if pulse <= 0:
+        return None   # no echo = clear path
+
+    return (pulse * 0.0343) / 2.0
+
+
+# ═══════════════════════════════════════════════════════════
+# SECTION 5 — FIREBASE NODE INIT
+# ═══════════════════════════════════════════════════════════
+
+def init_firebase_nodes():
+    """
+    Write safe default values to Firebase on startup.
+    Ensures the dashboard never reads stale data.
+    """
+    print("[Firebase] Initialising nodes ...")
+
+    firebase_put("/robotStatus", {
+        "obstacle"  : False,
+        "state"     : "stopped",
+        "lastUpdate": time.time()
+    })
+
+    firebase_put("/robotCommands", {
+        "move"      : "stop",
+        "timestamp" : time.time()
+    })
+
+    firebase_put("/robotGPS", {
+        "lat"        : None,
+        "lon"        : None,
+        "satellites" : 0,
+        "lastUpdate" : time.time()
+    })
+
+    print("[Firebase] ✅ Nodes initialised")
+
+
+# ═══════════════════════════════════════════════════════════
+# SECTION 6 — COMMAND DISPATCHER
+# ═══════════════════════════════════════════════════════════
+
+VALID_COMMANDS = {"forward", "backward", "left", "right", "stop"}
+
+def execute_command(motors: MotorController, command: str):
+    """
+    Map a Firebase command string → motor action.
+    Falls back to stop() for any unknown command.
+    """
+    if   command == "forward":  motors.forward(MOTOR_SPEED)
+    elif command == "backward": motors.backward(MOTOR_SPEED)
+    elif command == "left":     motors.left(MOTOR_SPEED)
+    elif command == "right":    motors.right(MOTOR_SPEED)
+    elif command == "stop":     motors.stop()
+    else:
+        print(f"[CMD] Unknown command '{command}' — defaulting to stop")
+        motors.stop()
+
+
+# ═══════════════════════════════════════════════════════════
+# SECTION 7 — MAIN APPLICATION LOOP
+# ═══════════════════════════════════════════════════════════
+
+def main():
+    print("\n" + "=" * 42)
+    print("   KLNavBot v2.0.0  —  MicroPython")
+    print("=" * 42 + "\n")
+
+    # ── Hardware init ─────────────────────────────────────────
+    trig, echo = setup_ultrasonic()          # HC-SR04
+    motors     = MotorController(MOTOR_SPEED) # L298N via motor_control.py
+    gps        = GPSModule()                  # NEO-6M via gps_module.py
+
+    # ── Network + Firebase ────────────────────────────────────
+    connect_wifi()
+    init_firebase_nodes()
+
+    # ── Loop state variables ──────────────────────────────────
+    last_command        = "stop"   # most recent executed command
+    motor_halted        = False    # True while obstacle is blocking
+    last_firebase_ms    = 0        # timestamp of last Firebase poll
+    last_gps_push_ms    = 0        # timestamp of last GPS push
+    last_status_push_ms = 0        # timestamp of last status heartbeat
+
+    print("\n✅ All systems ready — entering main loop\n")
+
+    # ─────────────────────────────────────────────────────────
+    while True:
+        now = time.ticks_ms()
+        gc.collect()   # prevent memory fragmentation over time
+
+        # ╔══════════════════════════════════════════════════╗
+        # ║  STEP 1 — Obstacle check (runs every iteration) ║
+        # ╚══════════════════════════════════════════════════╝
+        distance     = get_distance_cm(trig, echo)
+        obstacle_now = (distance is not None and distance < OBSTACLE_THRESHOLD_CM)
+
+        if obstacle_now:
+            # ── New obstacle: halt once and report ───────────
+            if not motor_halted:
+                print(f"[SENSOR] 🛑 Obstacle {distance:.1f} cm — halting!")
+                motors.stop()
+                motor_halted = True
+                firebase_patch("/robotStatus", {
+                    "obstacle"  : True,
+                    "state"     : "stopped",
+                    "lastUpdate": time.time()
+                })
+            time.sleep(0.5)
+            continue   # skip commands and GPS while blocked
+
+        else:
+            # ── Obstacle cleared: re-enable command handling ─
+            if motor_halted:
+                print("[SENSOR] 🚗 Path clear — ready for commands")
+                motor_halted = False
+                firebase_patch("/robotStatus", {
+                    "obstacle"  : False,
+                    "state"     : "stopped",
+                    "lastUpdate": time.time()
+                })
+
+        # ╔══════════════════════════════════════════════════╗
+        # ║  STEP 2 — Firebase command poll  (every 500 ms) ║
+        # ╚══════════════════════════════════════════════════╝
+        if time.ticks_diff(now, last_firebase_ms) >= FIREBASE_POLL_MS:
+            last_firebase_ms = now
+
+            data = firebase_get("/robotCommands")
+
+            if data and isinstance(data, dict):
+                new_cmd = data.get("move", "stop")
+
+                # Reject invalid command strings
+                if new_cmd not in VALID_COMMANDS:
+                    new_cmd = "stop"
+
+                # Only act if command actually changed
+                if new_cmd != last_command:
+                    last_command = new_cmd
+                    print(f"[CMD] ▶ {new_cmd}")
+                    execute_command(motors, new_cmd)
+
+                    # Report new state back to dashboard
+                    state = "stopped" if new_cmd == "stop" else "moving"
+                    firebase_patch("/robotStatus", {
+                        "state"     : state,
+                        "lastUpdate": time.time()
+                    })
+
+        # ╔══════════════════════════════════════════════════╗
+        # ║  STEP 3 — Status heartbeat push  (every 1 sec)  ║
+        # ╚══════════════════════════════════════════════════╝
+        if time.ticks_diff(now, last_status_push_ms) >= STATUS_PUSH_MS:
+            last_status_push_ms = now
+            state = "stopped" if last_command == "stop" else "moving"
+            firebase_patch("/robotStatus", {
+                "obstacle"  : False,
+                "state"     : state,
+                "lastUpdate": time.time()
+            })
+
+        # ╔══════════════════════════════════════════════════╗
+        # ║  STEP 4 — GPS read & push        (every 2 sec)  ║
+        # ╚══════════════════════════════════════════════════╝
+        lat, lon, sats = gps.read()
+
+        if lat is not None and lon is not None:
+            if time.ticks_diff(now, last_gps_push_ms) >= GPS_PUSH_MS:
+                last_gps_push_ms = now
+                firebase_patch("/robotGPS", {
+                    "lat"        : lat,
+                    "lon"        : lon,
+                    "satellites" : sats,
+                    "lastUpdate" : time.time()
+                })
+
+        # Yield to prevent watchdog timeout
+        time.sleep(0.2)
+
+
+# ═══════════════════════════════════════════════════════════
+# ENTRY POINT
+# ═══════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    main()
