@@ -1,1 +1,1511 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KLU Campus Delivery Robot - Advanced Navigation</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.4.0/ol.css">
+<script src="https://cdn.jsdelivr.net/npm/ol@7.4.0/dist/ol.js"></script>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
+html, body {
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+.control-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  width: 360px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.control-panel h2 {
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  color: #1f2937;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-selector {
+  margin-bottom: 15px;
+}
+
+.location-selector label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.location-selector select {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.location-selector select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.location-selector select:hover {
+  border-color: #d1d5db;
+}
+
+.route-info {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.route-info strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.route-info span {
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+.status-wrapper {
+  margin-bottom: 15px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-idle {
+  background: #e5e7eb;
+  color: #4b5563;
+}
+
+.status-paused {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.robot-info {
+  background: #f9fafb;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 15px;
+  font-size: 13px;
+}
+
+.robot-info div {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.robot-info div:last-child {
+  margin-bottom: 0;
+}
+
+.robot-info strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+.robot-info span {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.delivery-stops {
+  margin-bottom: 15px;
+}
+
+.delivery-stops h3 {
+  font-size: 14px;
+  color: #374151;
+  margin-bottom: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delivery-item {
+  background: #f0fdf4;
+  padding: 12px;
+  border-radius: 10px;
+  border-left: 3px solid #10b981;
+  font-size: 13px;
+}
+
+.delivery-item strong {
+  display: block;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.delivery-item span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  flex: 1;
+  min-width: 100px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.btn-secondary {
+  background: #f59e0b;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #d97706;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.map-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  z-index: 1000;
+  font-size: 12px;
+}
+
+.map-legend h3 {
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: #333;
+  font-weight: 600;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.swap-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #f3f4f6;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.swap-btn:hover {
+  background: #e5e7eb;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.selector-wrapper {
+  position: relative;
+}
+
+.inline-otp-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.inline-otp-input {
+  width: 60px;
+  padding: 6px 8px;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+  letter-spacing: 2px;
+  font-weight: 600;
+}
+
+.inline-otp-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.inline-verify-btn {
+  padding: 6px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.inline-verify-btn:hover {
+  background: #2563eb;
+}
+
+.inline-otp-message {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inline-otp-message.success {
+  color: #10b981;
+}
+
+.inline-otp-message.error {
+  color: #ef4444;
+}
+
+/* NEW: Manual Control Section */
+.manual-control-section {
+  margin-bottom: 15px;
+  background: #f0f9ff;
+  padding: 14px;
+  border-radius: 12px;
+  border: 2px solid #e0f2fe;
+}
+
+.manual-control-section h3 {
+  font-size: 14px;
+  color: #374151;
+  margin-bottom: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.direction-controls {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-width: 200px;
+  margin: 0 auto;
+}
+
+.direction-btn {
+  width: 60px;
+  height: 60px;
+  border: none;
+  border-radius: 10px;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.direction-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.direction-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.direction-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.direction-btn.forward {
+  grid-column: 2;
+  background: #10b981;
+  color: white;
+}
+
+.direction-btn.left {
+  grid-column: 1;
+  grid-row: 2;
+  background: #f59e0b;
+  color: white;
+}
+
+.direction-btn.stop {
+  grid-column: 2;
+  grid-row: 2;
+  background: #ef4444;
+  color: white;
+  font-size: 20px;
+}
+
+.direction-btn.right {
+  grid-column: 3;
+  grid-row: 2;
+  background: #f59e0b;
+  color: white;
+}
+
+.direction-btn.backward {
+  grid-column: 2;
+  grid-row: 3;
+  background: #10b981;
+  color: white;
+}
+
+.obstacle-warning {
+  margin-top: 10px;
+  padding: 10px;
+  background: #fee2e2;
+  border-left: 4px solid #ef4444;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #991b1b;
+  font-weight: 600;
+  display: none;
+}
+
+.obstacle-warning.active {
+  display: block;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="control-panel">
+  <h2>🤖 KLU Delivery Robot</h2>
+  
+  <div class="location-selector">
+    <label>📍 Start Location:</label>
+    <div class="selector-wrapper">
+      <select id="startLocation">
+        <option value="canteen">Main Canteen</option>
+        <option value="c-block">C Block</option>
+        <option value="s-block">S Block</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="location-selector">
+    <label>🎯 Target Location:</label>
+    <div class="selector-wrapper">
+      <select id="targetLocation">
+        <option value="c-block">C Block</option>
+        <option value="s-block">S Block</option>
+        <option value="rnd-block">R&D Block</option>
+        <option value="m-block">M Block</option>
+        <option value="fed-block">FED Block</option>
+        <option value="l-block">L Block (Central Library)</option>
+        <option value="arts-block">Arts Block</option>
+        <option value="kgh-hostel">KGH Boys Hostel</option>
+        <option value="kl-hostel">KL Girls Hostel</option>
+        <option value="sports-complex">Sports Complex</option>
+      </select>
+      <button class="swap-btn" onclick="swapLocations()" title="Swap locations">⇅</button>
+    </div>
+  </div>
+
+  <div class="route-info" id="routeInfo">
+    <strong>Select locations to start</strong>
+    <span>Choose start and target points above</span>
+  </div>
+  
+  <!-- NEW: Manual Control Section -->
+  <div class="manual-control-section">
+    <h3>🎮 Manual Control</h3>
+    <div class="direction-controls">
+      <button class="direction-btn forward" id="forwardBtn" onclick="sendCommand('forward')">⬆️</button>
+      <button class="direction-btn left" id="leftBtn" onclick="sendCommand('left')">⬅️</button>
+      <button class="direction-btn stop" id="stopBtn" onclick="sendCommand('stop')">⏹️</button>
+      <button class="direction-btn right" id="rightBtn" onclick="sendCommand('right')">➡️</button>
+      <button class="direction-btn backward" id="backwardBtn" onclick="sendCommand('backward')">⬇️</button>
+    </div>
+    <div class="obstacle-warning" id="obstacleWarning">
+      ⚠️ Obstacle detected! Robot stopped for safety.
+    </div>
+  </div>
+  
+  <div class="status-wrapper">
+    <div id="status" class="status-badge status-idle">Idle</div>
+    <div id="otpInputContainer"></div>
+  </div>
+  
+  <div class="robot-info">
+    <div>
+      <strong>Battery:</strong>
+      <span id="battery">85%</span>
+    </div>
+    <div>
+      <strong>Speed:</strong>
+      <span id="speed">0 m/s</span>
+    </div>
+    <div>
+      <strong>Distance:</strong>
+      <span id="distance">0m</span>
+    </div>
+    <div>
+      <strong>Location:</strong>
+      <span id="currentLocation">--</span>
+    </div>
+    <div>
+      <strong>Robot State:</strong>
+      <span id="robotState">--</span>
+    </div>
+  </div>
+
+  <div class="delivery-stops">
+    <h3>📦 Delivery Info</h3>
+    <div class="delivery-item" id="deliveryItem">
+      <strong id="deliveryRoute">Select locations first</strong>
+      <span id="deliveryPackage">Package: --</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="startBtn" disabled>Start Route</button>
+    <button class="btn btn-secondary" id="pauseBtn" disabled>Pause</button>
+    <button class="btn btn-danger" id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<div class="map-legend">
+  <h3>📍 Legend</h3>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: #ef4444;"></div>
+    <span>Robot</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: #10b981;"></div>
+    <span>Start Point</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: #3b82f6;"></div>
+    <span>Target Point</span>
+  </div>
+  <div class="legend-item">
+    <div style="width: 30px; height: 4px; background: #ef4444; border-radius: 2px;"></div>
+    <span>Delivery Route</span>
+  </div>
+  <div class="legend-item">
+    <div style="width: 30px; height: 4px; background: #f59e0b; border-radius: 2px;"></div>
+    <span>Return Route</span>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+// KLU Campus locations with ACCURATE coordinates [longitude, latitude]
+const campusLocations = {
+  's-block': {
+    name: 'S Block',
+    coords: [80.6215211613485, 16.443536461341907]
+  },
+  'kgh-hostel': {
+    name: 'KGH Boys Hostel',
+    coords: [80.6210607959365, 16.44302252269531]
+  },
+  'l-block': {
+    name: 'L Block (Central Library)',
+    coords: [80.62225562037058, 16.441823047549892]
+  },
+  'fed-block': {
+    name: 'FED Block',
+    coords: [80.62159988406823, 16.44129213890485]
+  },
+  'c-block': {
+    name: 'C Block',
+    coords: [80.6222172981291, 16.440340583595606]
+  },
+  'm-block': {
+    name: 'M Block',
+    coords: [80.62271974542571, 16.440781648425897]
+  },
+  'rnd-block': {
+    name: 'R&D Block',
+    coords: [80.62364799551604, 16.440581535802988]
+  },
+  'kl-hostel': {
+    name: 'KL Girls Hostel',
+    coords: [80.62488282365112, 16.441124698166586]
+  },
+  'arts-block': {
+    name: 'Arts Block',
+    coords: [80.62302206542779, 16.441635187741856]
+  },
+  'sports-complex': {
+    name: 'Sports Complex',
+    coords: [80.62351173864059, 16.442635743364043]
+  },
+  'canteen': {
+    name: 'Main Canteen',
+    coords: [80.62423437677018, 16.441589404127136]
+  }
+};
+
+// Global variables
+let map;
+let API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjlmN2NhNzFmMGVkNDQ2ZTNhYjM0MzE2NDA4YjkxNjhjIiwiaCI6Im11cm11cjY0In0=";
+
+// Route waypoints for all campus paths [longitude, latitude]
+const routeWaypoints = {
+  // A. MAIN CANTEEN ROUTES
+  'canteen-s-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.6215211613485, 16.443536461341907]
+  ],
+  'canteen-kgh-hostel': [
+    [80.62423437677018, 16.441589404127136],
+    [80.6210607959365, 16.44302252269531]
+  ],
+  'canteen-l-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62225562037058, 16.441823047549892]
+  ],
+  'canteen-fed-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62159988406823, 16.44129213890485]
+  ],
+  'canteen-c-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.6222172981291, 16.440340583595606]
+  ],
+  'canteen-m-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62271974542571, 16.440781648425897]
+  ],
+  'canteen-rnd-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62364799551604, 16.440581535802988]
+  ],
+  'canteen-kl-hostel': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62488282365112, 16.441124698166586]
+  ],
+  'canteen-arts-block': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62302206542779, 16.441635187741856]
+  ],
+  'canteen-sports-complex': [
+    [80.62423437677018, 16.441589404127136],
+    [80.62351173864059, 16.442635743364043]
+  ],
+  
+  // B. C BLOCK ROUTES
+  'c-block-s-block': [
+    [80.6222172981291, 16.440340583595606],
+    [80.6215211613485, 16.443536461341907]
+  ],
+  'c-block-kgh-hostel': [
+    [80.6222172981291, 16.440340583595606],
+    [80.6210607959365, 16.44302252269531]
+  ],
+  'c-block-l-block': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62225562037058, 16.441823047549892]
+  ],
+  'c-block-fed-block': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62159988406823, 16.44129213890485]
+  ],
+  'c-block-m-block': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62271974542571, 16.440781648425897]
+  ],
+  'c-block-rnd-block': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62364799551604, 16.440581535802988]
+  ],
+  'c-block-kl-hostel': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62488282365112, 16.441124698166586]
+  ],
+  'c-block-arts-block': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62302206542779, 16.441635187741856]
+  ],
+  'c-block-sports-complex': [
+    [80.6222172981291, 16.440340583595606],
+    [80.62351173864059, 16.442635743364043]
+  ],
+  
+  // C. S BLOCK ROUTES
+  's-block-kgh-hostel': [
+    [80.6215211613485, 16.443536461341907],
+    [80.6210607959365, 16.44302252269531]
+  ],
+  's-block-l-block': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62225562037058, 16.441823047549892]
+  ],
+  's-block-fed-block': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62159988406823, 16.44129213890485]
+  ],
+  's-block-c-block': [
+    [80.6215211613485, 16.443536461341907],
+    [80.6222172981291, 16.440340583595606]
+  ],
+  's-block-m-block': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62271974542571, 16.440781648425897]
+  ],
+  's-block-rnd-block': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62364799551604, 16.440581535802988]
+  ],
+  's-block-kl-hostel': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62488282365112, 16.441124698166586]
+  ],
+  's-block-arts-block': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62302206542779, 16.441635187741856]
+  ],
+  's-block-sports-complex': [
+    [80.6215211613485, 16.443536461341907],
+    [80.62351173864059, 16.442635743364043]
+  ]
+};
+
+let currentStart = 'canteen';
+let currentTarget = 'c-block';
+let routeCoordinates = [];
+let markerLayer, routeLayer, robotMarker;
+let liveRobotFeature;
+let animationState = {
+  isRunning: false,
+  isPaused: false,
+  currentIndex: 0,
+  progress: 0,
+  battery: 85,
+  distanceTraveled: 0,
+  totalDistance: 0,
+  frameId: null,
+  isReturning: false,
+  returnRouteCoordinates: [],
+  deliveryComplete: false
+};
+
+let firebaseOTP = null;
+let otpTimeoutId = null;
+let otpListenerActive = false;
+let generatedOTP = null;
+let otpGenerated = false;
+
+// Firebase initialization
+const firebaseConfig = {
+  apiKey: "AIzaSyD2C_IbPssaeiSZGz69iuG5QBQb3Lk24bI",
+  authDomain: "klu-robot-tracker.firebaseapp.com",
+  databaseURL: "https://klu-robot-tracker-default-rtdb.firebaseio.com/",
+  projectId: "klu-robot-tracker"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// NEW: Send command to Firebase
+function sendCommand(command) {
+  db.ref("robotCommands").update({
+    move: command,
+    timestamp: Date.now()
+  }).then(() => {
+    console.log(`Command sent: ${command}`);
+    
+    // Visual feedback
+    const buttons = ['forwardBtn', 'backwardBtn', 'leftBtn', 'rightBtn', 'stopBtn'];
+    buttons.forEach(btnId => {
+      const btn = document.getElementById(btnId);
+      if (btn) btn.style.opacity = '0.5';
+    });
+    
+    const activeBtn = document.getElementById(command + 'Btn');
+    if (activeBtn) {
+      activeBtn.style.opacity = '1';
+      activeBtn.style.transform = 'scale(0.95)';
+      setTimeout(() => {
+        activeBtn.style.transform = 'scale(1)';
+      }, 100);
+    }
+  }).catch(err => {
+    console.error("Error sending command:", err);
+  });
+}
+
+// NEW: Listen for robot status
+function listenForRobotStatus() {
+  db.ref("robotStatus").on("value", snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+    
+    const { obstacle, state } = data;
+    
+    // Update obstacle warning
+    const obstacleWarning = document.getElementById('obstacleWarning');
+    if (obstacle) {
+      obstacleWarning.classList.add('active');
+      // Disable manual controls when obstacle detected
+      ['forwardBtn', 'backwardBtn', 'leftBtn', 'rightBtn'].forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.disabled = true;
+      });
+    } else {
+      obstacleWarning.classList.remove('active');
+      // Enable manual controls when no obstacle
+      ['forwardBtn', 'backwardBtn', 'leftBtn', 'rightBtn'].forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.disabled = false;
+      });
+    }
+    
+    // Update robot state display
+    const robotStateEl = document.getElementById('robotState');
+    if (robotStateEl) {
+      robotStateEl.textContent = state || '--';
+      if (obstacle) {
+        robotStateEl.textContent = 'OBSTACLE!';
+        robotStateEl.style.color = '#ef4444';
+        robotStateEl.style.fontWeight = 'bold';
+      } else {
+        robotStateEl.style.color = '#6b7280';
+        robotStateEl.style.fontWeight = '600';
+      }
+    }
+  });
+}
+
+// Initialize map
+function initMap() {
+  const centerCoord = campusLocations['canteen'].coords;
+  
+  map = new ol.Map({
+    target: 'map',
+    layers: [
+      new ol.layer.Tile({ 
+        source: new ol.source.OSM() 
+      })
+    ],
+    view: new ol.View({
+      center: ol.proj.fromLonLat(centerCoord),
+      zoom: 16.5
+    })
+  });
+
+  markerLayer = new ol.layer.Vector({
+    source: new ol.source.Vector()
+  });
+  map.addLayer(markerLayer);
+}
+
+// Add marker
+function addMarker(coord, color, label) {
+  const feature = new ol.Feature({
+    geometry: new ol.geom.Point(ol.proj.fromLonLat(coord))
+  });
+  
+  feature.setStyle(new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 9,
+      fill: new ol.style.Fill({ color }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 3 })
+    }),
+    text: new ol.style.Text({
+      text: label,
+      offsetY: -22,
+      font: 'bold 13px sans-serif',
+      fill: new ol.style.Fill({ color: '#1f2937' }),
+      stroke: new ol.style.Stroke({ color: 'white', width: 4 }),
+      backgroundFill: new ol.style.Fill({ color: 'rgba(255, 255, 255, 0.9)' }),
+      padding: [2, 4, 2, 4]
+    })
+  }));
+  
+  markerLayer.getSource().addFeature(feature);
+}
+
+// Create robot marker
+function createRobotMarker(coord) {
+  const feature = new ol.Feature({
+    geometry: new ol.geom.Point(ol.proj.fromLonLat(coord))
+  });
+  
+  feature.setStyle([
+    new ol.style.Style({
+      image: new ol.style.Circle({
+        radius: 18,
+        fill: new ol.style.Fill({ color: 'rgba(239, 68, 68, 0.2)' }),
+        stroke: new ol.style.Stroke({ color: '#ef4444', width: 2 })
+      })
+    }),
+    new ol.style.Style({
+      image: new ol.style.Circle({
+        radius: 10,
+        fill: new ol.style.Fill({ color: '#ef4444' }),
+        stroke: new ol.style.Stroke({ color: '#fff', width: 3 })
+      })
+    }),
+    new ol.style.Style({
+      text: new ol.style.Text({
+        text: '🤖',
+        font: '26px sans-serif',
+        offsetY: -32
+      })
+    })
+  ]);
+  
+  return feature;
+}
+
+// Initialize live robot marker
+function initLiveRobotMarker() {
+  const initialCoord = campusLocations['canteen'].coords;
+  liveRobotFeature = createRobotMarker(initialCoord);
+  markerLayer.getSource().addFeature(liveRobotFeature);
+}
+
+// Listen for live GPS location
+function listenForLiveLocation() {
+  db.ref("robotGPS").on("value", snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+    const { lat, lon } = data;
+    if (lat == null || lon == null) return;
+    const newPos = ol.proj.fromLonLat([lon, lat]);
+    liveRobotFeature.getGeometry().setCoordinates(newPos);
+    document.getElementById("currentLocation").textContent = lat.toFixed(5) + ", " + lon.toFixed(5);
+    map.getView().animate({ center: newPos, duration: 800 });
+  });
+}
+
+// Listen for OTP from Firebase
+function listenForOTP() {
+  if (otpListenerActive) return;
+  otpListenerActive = true;
+  
+  db.ref("deliveryOTP").on("value", snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+    
+    const { otp, verified, delivered } = data;
+    
+    if (otp && delivered === true && verified === false && !firebaseOTP) {
+      firebaseOTP = otp;
+      
+      if (otpTimeoutId) {
+        clearTimeout(otpTimeoutId);
+        otpTimeoutId = null;
+      }
+      
+      document.getElementById('status').textContent = 'OTP Received! 🔐';
+      document.getElementById('status').className = 'status-badge status-active';
+    }
+  });
+}
+
+function generateRandomOTP() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+function showInlineOTPInput() {
+  const container = document.getElementById('otpInputContainer');
+  
+  if (container.innerHTML !== '') {
+    return;
+  }
+  
+  container.innerHTML = `
+    <div class="inline-otp-container">
+      <input type="text" id="inlineOtpInput" maxlength="4" placeholder="OTP" class="inline-otp-input">
+      <button id="inlineVerifyBtn" class="inline-verify-btn">Verify</button>
+      <span id="inlineOtpMessage" class="inline-otp-message"></span>
+    </div>
+  `;
+  
+  const inlineInput = document.getElementById('inlineOtpInput');
+  const inlineVerifyBtn = document.getElementById('inlineVerifyBtn');
+  
+  inlineInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      verifyInlineOTP();
+    }
+    if (!/[0-9]/.test(e.key)) {
+      e.preventDefault();
+    }
+  });
+  
+  inlineVerifyBtn.addEventListener('click', verifyInlineOTP);
+  
+  setTimeout(() => inlineInput.focus(), 100);
+}
+
+function removeInlineOTPInput() {
+  const container = document.getElementById('otpInputContainer');
+  container.innerHTML = '';
+}
+
+function verifyInlineOTP() {
+  const inlineInput = document.getElementById('inlineOtpInput');
+  const inlineMessage = document.getElementById('inlineOtpMessage');
+  const enteredOTP = inlineInput.value;
+  
+  if (enteredOTP.length !== 4) {
+    inlineMessage.textContent = 'Enter 4 digits';
+    inlineMessage.className = 'inline-otp-message error';
+    return;
+  }
+  
+  if (enteredOTP === generatedOTP) {
+    inlineMessage.textContent = '✅ Verified';
+    inlineMessage.className = 'inline-otp-message success';
+    
+    if (otpTimeoutId) {
+      clearTimeout(otpTimeoutId);
+      otpTimeoutId = null;
+    }
+    
+    db.ref("deliveryOTP").update({
+      verified: true,
+      verifiedAt: Date.now()
+    });
+    
+    document.getElementById('status').textContent = 'Verified! Returning...';
+    document.getElementById('status').className = 'status-badge status-active';
+    
+    setTimeout(() => {
+      removeInlineOTPInput();
+      startReturnJourney();
+    }, 2000);
+  } else {
+    inlineMessage.textContent = '❌ Invalid';
+    inlineMessage.className = 'inline-otp-message error';
+    inlineInput.value = '';
+    inlineInput.focus();
+  }
+}
+
+// Load route
+function loadRoute() {
+  const startLoc = campusLocations[currentStart];
+  const targetLoc = campusLocations[currentTarget];
+  
+  if (!startLoc || !targetLoc) {
+    alert('Please select valid locations');
+    return;
+  }
+  
+  if (currentStart === currentTarget) {
+    alert('Start and target locations cannot be the same!');
+    return;
+  }
+  
+  // Clear existing
+  markerLayer.getSource().clear();
+  if (routeLayer) map.removeLayer(routeLayer);
+  if (robotMarker) markerLayer.getSource().removeFeature(robotMarker);
+  
+  // Re-add live robot marker
+  if (liveRobotFeature) {
+    markerLayer.getSource().addFeature(liveRobotFeature);
+  }
+  
+  // Add markers
+  addMarker(startLoc.coords, '#10b981', 'Start');
+  addMarker(targetLoc.coords, '#3b82f6', 'Target');
+  
+  // Update UI
+  document.getElementById('routeInfo').innerHTML = `
+    <strong>🚀 Route: ${startLoc.name} → ${targetLoc.name}</strong>
+    <span>Loading real road path...</span>
+  `;
+  
+  document.getElementById('status').textContent = 'Loading...';
+  document.getElementById('status').className = 'status-badge status-paused';
+  document.getElementById('currentLocation').textContent = startLoc.name;
+  
+  // Check if custom waypoints exist for this route
+  const routeKey = `${currentStart}-${currentTarget}`;
+  const waypointsKey = `${currentTarget}-${currentStart}`;
+  
+  let coordinates;
+  if (routeWaypoints[routeKey]) {
+    coordinates = routeWaypoints[routeKey];
+  } else if (routeWaypoints[waypointsKey]) {
+    coordinates = [...routeWaypoints[waypointsKey]].reverse();
+  } else {
+    coordinates = [startLoc.coords, targetLoc.coords];
+  }
+  
+  // Fetch route
+  fetch("https://api.openrouteservice.org/v2/directions/foot-walking/geojson", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": API_KEY
+    },
+    body: JSON.stringify({
+      coordinates: coordinates
+    })
+  })
+  .then(res => {
+    if (!res.ok) throw new Error('Routing failed');
+    return res.json();
+  })
+  .then(data => {
+    routeCoordinates = data.features[0].geometry.coordinates;
+    const distance = data.features[0].properties.segments[0].distance;
+    const duration = data.features[0].properties.segments[0].duration;
+    animationState.totalDistance = distance;
+    
+    // Draw route
+    const features = new ol.format.GeoJSON().readFeatures(data, {
+      featureProjection: 'EPSG:3857'
+    });
+    
+    routeLayer = new ol.layer.Vector({
+      source: new ol.source.Vector({ features }),
+      style: new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: '#ef4444',
+          width: 8,
+          lineCap: 'round',
+          lineJoin: 'round'
+        })
+      })
+    });
+    map.addLayer(routeLayer);
+    
+    // Fit map
+    const extent = routeLayer.getSource().getExtent();
+    map.getView().fit(extent, { padding: [100, 100, 100, 100] });
+    
+    // Create robot
+    robotMarker = createRobotMarker(startLoc.coords);
+    markerLayer.getSource().addFeature(robotMarker);
+    
+    // Update UI
+    const eta = Math.round(duration / 60);
+    document.getElementById('routeInfo').innerHTML = `
+      <strong>🚀 Route: ${startLoc.name} → ${targetLoc.name}</strong>
+      <span>Campus route • ${Math.round(distance)}m • ETA: ${eta} min</span>
+    `;
+    
+    document.getElementById('deliveryRoute').textContent = `${startLoc.name} → ${targetLoc.name}`;
+    document.getElementById('deliveryPackage').textContent = `Package: #DEL${Math.floor(Math.random() * 9000) + 1000}`;
+    
+    document.getElementById('status').textContent = 'Ready';
+    document.getElementById('status').className = 'status-badge status-idle';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('pauseBtn').disabled = true;
+    
+    // Reset animation state
+    animationState = {
+      isRunning: false,
+      isPaused: false,
+      currentIndex: 0,
+      progress: 0,
+      battery: 85,
+      distanceTraveled: 0,
+      totalDistance: distance,
+      frameId: null,
+      isReturning: false,
+      returnRouteCoordinates: [],
+      deliveryComplete: false
+    };
+  })
+  .catch(err => {
+    console.error('Route error:', err);
+    document.getElementById('routeInfo').innerHTML = `
+      <strong>❌ Route Error</strong>
+      <span>Could not load route. Please try again.</span>
+    `;
+    document.getElementById('status').textContent = 'Error';
+    document.getElementById('status').className = 'status-badge status-error';
+  });
+}
+
+// Animate robot movement
+function animateRobot() {
+  if (!animationState.isRunning || animationState.isPaused) return;
+  
+  const coords = animationState.isReturning ? animationState.returnRouteCoordinates : routeCoordinates;
+  
+  if (animationState.currentIndex >= coords.length - 1) {
+    if (!animationState.isReturning && !animationState.deliveryComplete) {
+      completeDelivery();
+      return;
+    } else if (animationState.isReturning) {
+      completeRoute();
+      return;
+    }
+  }
+  
+  const start = coords[animationState.currentIndex];
+  const end = coords[animationState.currentIndex + 1];
+  
+  animationState.progress += 0.02;
+  
+  if (animationState.progress >= 1) {
+    animationState.progress = 0;
+    animationState.currentIndex++;
+  }
+  
+  const lon = start[0] + (end[0] - start[0]) * animationState.progress;
+  const lat = start[1] + (end[1] - start[1]) * animationState.progress;
+  
+  const newPos = ol.proj.fromLonLat([lon, lat]);
+  robotMarker.getGeometry().setCoordinates(newPos);
+  
+  // Update stats
+  const segmentDist = Math.sqrt(Math.pow(end[0] - start[0], 2) + Math.pow(end[1] - start[1], 2)) * 111320;
+  animationState.distanceTraveled += segmentDist * 0.02;
+  animationState.battery -= 0.001;
+  
+  document.getElementById('speed').textContent = '1.2 m/s';
+  document.getElementById('distance').textContent = Math.round(animationState.distanceTraveled) + 'm';
+  document.getElementById('battery').textContent = Math.max(0, animationState.battery.toFixed(1)) + '%';
+  
+  const progressPercent = ((animationState.currentIndex + animationState.progress) / coords.length * 100).toFixed(0);
+  
+  if (animationState.isReturning) {
+    document.getElementById('status').textContent = `Returning ${progressPercent}%`;
+  } else {
+    document.getElementById('status').textContent = `En Route ${progressPercent}%`;
+  }
+  
+  animationState.frameId = requestAnimationFrame(animateRobot);
+}
+
+// Start return journey
+function startReturnJourney() {
+  const targetLoc = campusLocations[currentTarget];
+  const startLoc = campusLocations[currentStart];
+  
+  const returnRouteKey = `${currentTarget}-${currentStart}`;
+  const originalKey = `${currentStart}-${currentTarget}`;
+  
+  let coordinates;
+  if (routeWaypoints[returnRouteKey]) {
+    coordinates = routeWaypoints[returnRouteKey];
+  } else if (routeWaypoints[originalKey]) {
+    coordinates = [...routeWaypoints[originalKey]].reverse();
+  } else {
+    coordinates = [targetLoc.coords, startLoc.coords];
+  }
+  
+  fetch("https://api.openrouteservice.org/v2/directions/foot-walking/geojson", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": API_KEY
+    },
+    body: JSON.stringify({
+      coordinates: coordinates
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    animationState.returnRouteCoordinates = data.features[0].geometry.coordinates;
+    
+    if (routeLayer) map.removeLayer(routeLayer);
+    
+    const features = new ol.format.GeoJSON().readFeatures(data, {
+      featureProjection: 'EPSG:3857'
+    });
+    
+    routeLayer = new ol.layer.Vector({
+      source: new ol.source.Vector({ features }),
+      style: new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: '#f59e0b',
+          width: 8,
+          lineCap: 'round',
+          lineJoin: 'round'
+        })
+      })
+    });
+    map.addLayer(routeLayer);
+    
+    document.getElementById('deliveryRoute').textContent = `Returning to ${startLoc.name}`;
+    
+    animationState.isReturning = true;
+    animationState.currentIndex = 0;
+    animationState.progress = 0;
+    animationState.isRunning = true;
+    animateRobot();
+  })
+  .catch(err => {
+    console.error('Return route error:', err);
+    completeRoute();
+  });
+}
+
+// Complete delivery and wait for OTP
+function completeDelivery() {
+  if (otpGenerated) return;
+  
+  animationState.isRunning = false;
+  animationState.deliveryComplete = true;
+  
+  generatedOTP = generateRandomOTP();
+  otpGenerated = true;
+  
+  db.ref("deliveryOTP").set({
+    otp: generatedOTP,
+    delivered: true,
+    verified: false,
+    createdAt: Date.now()
+  });
+  
+  document.getElementById('status').textContent = 'Waiting for OTP... ⏳';
+  document.getElementById('status').className = 'status-badge status-paused';
+  document.getElementById('speed').textContent = '0 m/s';
+  
+  showInlineOTPInput();
+  
+  otpTimeoutId = setTimeout(() => {
+    const container = document.getElementById('otpInputContainer');
+    if (container.innerHTML !== '') {
+      document.getElementById('status').textContent = 'No OTP received. Moving back... 🔄';
+      document.getElementById('status').className = 'status-badge status-error';
+      
+      setTimeout(() => {
+        removeInlineOTPInput();
+        startReturnJourney();
+      }, 2000);
+    }
+    
+    otpTimeoutId = null;
+  }, 30000);
+}
+
+// Complete entire route
+function completeRoute() {
+  animationState.isRunning = false;
+  document.getElementById('status').textContent = 'Mission Complete! ✅';
+  document.getElementById('status').className = 'status-badge status-active';
+  document.getElementById('speed').textContent = '0 m/s';
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('pauseBtn').disabled = true;
+  
+  if (animationState.frameId) {
+    cancelAnimationFrame(animationState.frameId);
+  }
+}
+
+// Swap locations
+function swapLocations() {
+  const startSelect = document.getElementById('startLocation');
+  const targetSelect = document.getElementById('targetLocation');
+  
+  const temp = startSelect.value;
+  startSelect.value = targetSelect.value;
+  targetSelect.value = temp;
+  
+  currentStart = startSelect.value;
+  currentTarget = targetSelect.value;
+  
+  loadRoute();
+}
+
+// Event listeners
+document.getElementById('startLocation').addEventListener('change', (e) => {
+  currentStart = e.target.value;
+  loadRoute();
+});
+
+document.getElementById('targetLocation').addEventListener('change', (e) => {
+  currentTarget = e.target.value;
+  loadRoute();
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (animationState.isRunning) return;
+  
+  animationState.isRunning = true;
+  animationState.isPaused = false;
+  
+  document.getElementById('status').textContent = 'Active';
+  document.getElementById('status').className = 'status-badge status-active';
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('pauseBtn').disabled = false;
+  
+  animateRobot();
+});
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  if (!animationState.isRunning) return;
+  
+  animationState.isPaused = !animationState.isPaused;
+  
+  if (animationState.isPaused) {
+    document.getElementById('status').textContent = 'Paused';
+    document.getElementById('status').className = 'status-badge status-paused';
+    document.getElementById('pauseBtn').textContent = 'Resume';
+    document.getElementById('speed').textContent = '0 m/s';
+  } else {
+    document.getElementById('status').textContent = 'Active';
+    document.getElementById('status').className = 'status-badge status-active';
+    document.getElementById('pauseBtn').textContent = 'Pause';
+    animateRobot();
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (animationState.frameId) {
+    cancelAnimationFrame(animationState.frameId);
+  }
+  
+  if (otpTimeoutId) {
+    clearTimeout(otpTimeoutId);
+    otpTimeoutId = null;
+  }
+  
+  firebaseOTP = null;
+  generatedOTP = null;
+  otpGenerated = false;
+  removeInlineOTPInput();
+  
+  animationState = {
+    isRunning: false,
+    isPaused: false,
+    currentIndex: 0,
+    progress: 0,
+    battery: 85,
+    distanceTraveled: 0,
+    totalDistance: 0,
+    frameId: null,
+    isReturning: false,
+    returnRouteCoordinates: [],
+    deliveryComplete: false
+  };
+  
+  document.getElementById('speed').textContent = '0 m/s';
+  document.getElementById('distance').textContent = '0m';
+  document.getElementById('battery').textContent = '85%';
+  document.getElementById('pauseBtn').textContent = 'Pause';
+  
+  loadRoute();
+});
+
+// Initialize
+initMap();
+initLiveRobotMarker();
+listenForLiveLocation();
+listenForOTP();
+listenForRobotStatus(); // NEW: Listen for robot status updates
+loadRoute();
+</script>
+</body>
+
+</html>
