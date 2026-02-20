@@ -1,2 +1,6 @@
-# KLNavBot
-NavBot is a cloud-connected campus delivery robot built with ESP32 and Firebase. It enables real-time GPS tracking, manual control, obstacle detection, and secure OTP-based delivery through a web dashboard. The project combines IoT hardware and cloud technology to create a smart autonomous delivery solution.
+KLNavBot is a cloud-connected autonomous campus delivery robot built using:
+ESP32
+Firebase
+Cloudflare Pages
+The system enables real-time GPS tracking, manual remote control, obstacle detection, and secure OTP-based delivery through a modern web dashboard.
+It combines IoT hardware with cloud computing to create a scalable smart delivery solution for campuses.
