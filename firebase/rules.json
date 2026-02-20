@@ -1,1 +1,72 @@
+{
+  "rules": {
 
+    /**
+     * KLNavBot — Firebase Realtime Database Security Rules
+     *
+     * Strategy:
+     *   - All writes require an authenticated user (UID present)
+     *   - Public read allowed only for specific non-sensitive nodes
+     *     (robot GPS and status — displayed on shared dashboards)
+     *   - Sensitive nodes (OTP, commands) require auth for both read & write
+     *   - Admin-only paths use custom claims (role === "admin")
+     *
+     * Authentication: Firebase Anonymous Auth (or full email/Google auth)
+     */
+
+    /* ── Robot GPS (public read, auth write) ───────────────── */
+    "robotGPS": {
+      ".read":  true,
+      ".write": "auth !== null"
+    },
+
+    /* ── Robot Status (public read, auth write) ─────────────── */
+    "robotStatus": {
+      ".read":  true,
+      ".write": "auth !== null"
+    },
+
+    /* ── Manual Commands (auth read & write only) ───────────── */
+    "robotCommands": {
+      ".read":  "auth !== null",
+      ".write": "auth !== null",
+
+      "move": {
+        /* Validate: only known command strings accepted */
+        ".validate": "newData.isString() && newData.val().matches(/^(forward|backward|left|right|stop)$/)"
+      },
+
+      "timestamp": {
+        ".validate": "newData.isNumber()"
+      }
+    },
+
+    /* ── Delivery OTP (auth read & write only) ──────────────── */
+    "deliveryOTP": {
+      ".read":  "auth !== null",
+      ".write": "auth !== null",
+
+      "otp": {
+        /* 4-digit numeric string */
+        ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}$/)"
+      },
+
+      "delivered":  { ".validate": "newData.isBoolean()" },
+      "verified":   { ".validate": "newData.isBoolean()" },
+      "createdAt":  { ".validate": "newData.isNumber()"  },
+      "verifiedAt": { ".validate": "newData.isNumber()"  }
+    },
+
+    /* ── Admin-only: full access for users with admin custom claim ── */
+    "adminLogs": {
+      ".read":  "auth !== null && auth.token.role === 'admin'",
+      ".write": "auth !== null && auth.token.role === 'admin'"
+    },
+
+    /* ── Default deny everything else ───────────────────────── */
+    "$other": {
+      ".read":  false,
+      ".write": false
+    }
+  }
+}
