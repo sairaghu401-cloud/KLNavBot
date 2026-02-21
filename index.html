@@ -369,114 +369,6 @@ html, body {
 .inline-otp-message.error {
   color: #ef4444;
 }
-
-/* NEW: Manual Control Section */
-.manual-control-section {
-  margin-bottom: 15px;
-  background: #f0f9ff;
-  padding: 14px;
-  border-radius: 12px;
-  border: 2px solid #e0f2fe;
-}
-
-.manual-control-section h3 {
-  font-size: 14px;
-  color: #374151;
-  margin-bottom: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.direction-controls {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  max-width: 200px;
-  margin: 0 auto;
-}
-
-.direction-btn {
-  width: 60px;
-  height: 60px;
-  border: none;
-  border-radius: 10px;
-  font-size: 24px;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.direction-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-
-.direction-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.direction-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.direction-btn.forward {
-  grid-column: 2;
-  background: #10b981;
-  color: white;
-}
-
-.direction-btn.left {
-  grid-column: 1;
-  grid-row: 2;
-  background: #f59e0b;
-  color: white;
-}
-
-.direction-btn.stop {
-  grid-column: 2;
-  grid-row: 2;
-  background: #ef4444;
-  color: white;
-  font-size: 20px;
-}
-
-.direction-btn.right {
-  grid-column: 3;
-  grid-row: 2;
-  background: #f59e0b;
-  color: white;
-}
-
-.direction-btn.backward {
-  grid-column: 2;
-  grid-row: 3;
-  background: #10b981;
-  color: white;
-}
-
-.obstacle-warning {
-  margin-top: 10px;
-  padding: 10px;
-  background: #fee2e2;
-  border-left: 4px solid #ef4444;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #991b1b;
-  font-weight: 600;
-  display: none;
-}
-
-.obstacle-warning.active {
-  display: block;
-}
 </style>
 </head>
 <body>
@@ -519,21 +411,6 @@ html, body {
   <div class="route-info" id="routeInfo">
     <strong>Select locations to start</strong>
     <span>Choose start and target points above</span>
-  </div>
-  
-  <!-- NEW: Manual Control Section -->
-  <div class="manual-control-section">
-    <h3>🎮 Manual Control</h3>
-    <div class="direction-controls">
-      <button class="direction-btn forward" id="forwardBtn" onclick="sendCommand('forward')">⬆️</button>
-      <button class="direction-btn left" id="leftBtn" onclick="sendCommand('left')">⬅️</button>
-      <button class="direction-btn stop" id="stopBtn" onclick="sendCommand('stop')">⏹️</button>
-      <button class="direction-btn right" id="rightBtn" onclick="sendCommand('right')">➡️</button>
-      <button class="direction-btn backward" id="backwardBtn" onclick="sendCommand('backward')">⬇️</button>
-    </div>
-    <div class="obstacle-warning" id="obstacleWarning">
-      ⚠️ Obstacle detected! Robot stopped for safety.
-    </div>
   </div>
   
   <div class="status-wrapper">
@@ -815,59 +692,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// NEW: Send command to Firebase
-function sendCommand(command) {
-  db.ref("robotCommands").update({
-    move: command,
-    timestamp: Date.now()
-  }).then(() => {
-    console.log(`Command sent: ${command}`);
-    
-    // Visual feedback
-    const buttons = ['forwardBtn', 'backwardBtn', 'leftBtn', 'rightBtn', 'stopBtn'];
-    buttons.forEach(btnId => {
-      const btn = document.getElementById(btnId);
-      if (btn) btn.style.opacity = '0.5';
-    });
-    
-    const activeBtn = document.getElementById(command + 'Btn');
-    if (activeBtn) {
-      activeBtn.style.opacity = '1';
-      activeBtn.style.transform = 'scale(0.95)';
-      setTimeout(() => {
-        activeBtn.style.transform = 'scale(1)';
-      }, 100);
-    }
-  }).catch(err => {
-    console.error("Error sending command:", err);
-  });
-}
-
-// NEW: Listen for robot status
+// Listen for robot status
 function listenForRobotStatus() {
   db.ref("robotStatus").on("value", snapshot => {
     const data = snapshot.val();
     if (!data) return;
     
     const { obstacle, state } = data;
-    
-    // Update obstacle warning
-    const obstacleWarning = document.getElementById('obstacleWarning');
-    if (obstacle) {
-      obstacleWarning.classList.add('active');
-      // Disable manual controls when obstacle detected
-      ['forwardBtn', 'backwardBtn', 'leftBtn', 'rightBtn'].forEach(btnId => {
-        const btn = document.getElementById(btnId);
-        if (btn) btn.disabled = true;
-      });
-    } else {
-      obstacleWarning.classList.remove('active');
-      // Enable manual controls when no obstacle
-      ['forwardBtn', 'backwardBtn', 'leftBtn', 'rightBtn'].forEach(btnId => {
-        const btn = document.getElementById(btnId);
-        if (btn) btn.disabled = false;
-      });
-    }
     
     // Update robot state display
     const robotStateEl = document.getElementById('robotState');
@@ -1503,9 +1334,8 @@ initMap();
 initLiveRobotMarker();
 listenForLiveLocation();
 listenForOTP();
-listenForRobotStatus(); // NEW: Listen for robot status updates
+listenForRobotStatus();
 loadRoute();
 </script>
 </body>
-
 </html>
